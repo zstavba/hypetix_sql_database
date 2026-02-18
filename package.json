@@ -1,0 +1,39 @@
+{
+   "name": "grinder-sql",
+   "version": "0.0.1",
+   "description": "Awesome project developed with TypeORM.",
+   "type": "commonjs",
+   "devDependencies": {
+      "@types/node": "^20.19.25",
+      "concurrently": "^9.2.0",
+      "nodemon": "^3.1.10",
+      "ts-node": "^10.9.1",
+      "ts-node-dev": "^2.0.0",
+      "tsconfig-paths": "^4.2.0",
+      "typescript": "^5.9.3"
+   },
+   "dependencies": {
+      "bcrypt": "^6.0.0",
+      "body-parser": "^2.2.0",
+      "cors": "^2.8.5",
+      "crypto": "^1.0.1",
+      "express": "^5.2.1",
+      "fs": "^0.0.1-security",
+      "multer": "^2.0.2",
+      "mysql": "^2.14.1",
+      "nodemailer": "^8.0.1",
+      "path": "^0.12.7",
+      "reflect-metadata": "^0.1.13",
+      "routing-controllers": "^0.11.2",
+      "socket.io": "^4.8.3",
+      "stripe": "^20.3.1",
+      "typeorm": "0.3.20"
+   },
+   "scripts": {
+      "build": "tsc -p tsconfig.json",
+      "start": "node build/index.js",
+      "start:dev": "ts-node src/index.ts",
+      "start:watch": "nodemon --watch src --ext ts,js,json --exec ts-node src/index.ts",
+      "typeorm": "typeorm-ts-node-commonjs"
+   }
+}

@@ -155,7 +155,7 @@ AppDataSource.initialize()
       });
     });
 
-    server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+    server.listen(0, () => {
+      console.log(`Server running on port ${0}`);
     });
   });

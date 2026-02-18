@@ -25,7 +25,7 @@ import { BillingPlanController } from "./Controllers/BillingPlanController";
 import { NotificationController } from "./Controllers/NotificationController";
 import { GeneralServicesController } from "./Controllers/GeneralServicesController";
 
-const PORT: number = Number(process.env.PORT) || 10000 ;
+const PORT: number = Number(process.env.PORT) || 4000;
 
 AppDataSource.initialize()
   .then(async () => {
@@ -155,7 +155,7 @@ AppDataSource.initialize()
       });
     });
 
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
   });

@@ -1,17 +1,15 @@
 import { FavoriteStatus } from './UserController';
 import { AppDataSource } from './../data-source';
-import { Request, Response, NextFunction } from 'express';
+import { Request, NextFunction } from 'express';
 import { JsonController, Post, Body, Req, Res, Get, Delete, UseBefore, UploadedFile, Param, createExpressServer, UploadedFiles } from 'routing-controllers';
 import { User } from '../entity/User';
-import * as bcyrpt from 'bcrypt';
+import * as bcyrpt from 'bcryptjs';
 import { UserSession } from '../entity/UserSession';
 import * as crypto from "crypto";
-import * as multer from 'multer';
-import type { Options } from 'multer';
+import multer, { Options } from 'multer';
 import path = require('path');
 import * as fs from 'fs';
 import { UserImages } from '../entity/UserImages';
-import type { Express } from 'express';
 import { UserFavorites } from '../entity/UserFavorites';
 import { News } from '../entity/News';
 import { Comment } from '../entity/Comment';
@@ -28,10 +26,10 @@ const fileUploadOptions = (): Options => ({
     destination: path.join(process.cwd(), 'uploads'),
     filename: (_req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
   }),
-  limits: { fileSize: 150 * 1024 * 1024, files: 20 },
+    limits: { fileSize: 10 * 1024 * 1024, files: 5 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype?.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only images are allowed'), false);
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(null, false); // Use null for error, false for rejection
   },
 });
 
@@ -43,7 +41,7 @@ export default class EventsController {
     @Get('/events/get')
     async getAllEvents(
         @Req() request: Request,
-        @Res() response: Response
+        @Res() response: any
     ) {
         try  {
 
@@ -56,19 +54,25 @@ export default class EventsController {
                                                    .leftJoinAndSelect("events.participants", "participants")
                                                    .leftJoinAndSelect("participants.user", "participantUser")
                                                    .leftJoinAndSelect("participantUser.profileImage", "participantProfileImage")
+                                                   .skip(0)
+                                                   .take(20)
                                                    .getMany(); 
 
-            return response.status(200).json(findEvents);
+            if (!response.headersSent) {
+                return response.status(200).json(findEvents);
+            }
 
         } catch (error) {
-            return response.status(500).json({ message: error.message });
+            if (!response.headersSent) {
+                return response.status(500).json({ message: error.message });
+            }
         }
     }
 
     @Get('/events/blocked')
     async getAllBlockedEvents(
         @Req() request: Request,
-        @Res() response: Response
+        @Res() response: any
     ) {
         try  {
 
@@ -81,6 +85,8 @@ export default class EventsController {
                                                    .leftJoinAndSelect("events.participants", "participants")
                                                    .leftJoinAndSelect("participants.user", "participantUser")
                                                    .leftJoinAndSelect("participantUser.profileImage", "participantProfileImage")
+                                                   .skip(0)
+                                                   .take(20)
                                                    .getMany(); 
 
             return response.status(200).json(findEvents);
@@ -94,7 +100,7 @@ export default class EventsController {
     async joinEvent(
         @Param('id') id: string,
         @Body() body: any,
-        @Res() response: Response
+        @Res() response: any
     ) {
         try {
             const userPayload = typeof body.fk_user_id === 'string'
@@ -138,7 +144,7 @@ export default class EventsController {
     async removeParticipant(
         @Param('eventId') eventId: string,
         @Param('userId') userId: number,
-        @Res() response: Response
+        @Res() response: any
     ) {
         try {
             const participantRepo = AppDataSource.getRepository(EventParticipant);
@@ -160,7 +166,7 @@ export default class EventsController {
     async create_event(
         @UploadedFiles('event_images', { options: fileUploadOptions() }) files: Express.Multer.File[],
         @Req() request: Request,
-        @Res() response: Response,
+        @Res() response: any,
         @Body() body: any
     ){
 
@@ -215,7 +221,7 @@ export default class EventsController {
     @Delete('/events/delete/:id')
     async deleteEvent(
         @Param('id') id: string,
-        @Res() response: Response
+        @Res() response: any
     ) {
         try {
             const eventsRepo = AppDataSource.getRepository(Events);
@@ -259,7 +265,7 @@ export default class EventsController {
     @Post('/events/block/:id')
     async blockEvent(
         @Param('id') id: string | number,
-        @Res() response: Response
+        @Res() response: any
     ) {
         try {
         
@@ -289,7 +295,7 @@ export default class EventsController {
     @Post('/events/unblock/:id')
     async unblockEvent(
         @Param('id') id: string | number,
-        @Res() response: Response
+        @Res() response: any
     ) {
         try {
         

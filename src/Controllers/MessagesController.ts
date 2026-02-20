@@ -3,11 +3,10 @@ import { AppDataSource } from './../data-source';
 import { Request, NextFunction } from 'express';
 import { JsonController, Post, Body, Req, Res, Get, Delete, UseBefore, UploadedFile, Param, createExpressServer, UploadedFiles } from 'routing-controllers';
 import { User } from '../entity/User';
-import * as bcyrpt from 'bcrypt';
+import * as bcyrpt from 'bcryptjs';
 import { UserSession } from '../entity/UserSession';
 import * as crypto from "crypto";
-import * as multer from 'multer';
-import type { Options, File as MulterFile } from 'multer';
+import multer, { Options } from 'multer';
 import path = require('path');
 import * as fs from 'fs';
 import { UserImages } from '../entity/UserImages';
@@ -42,10 +41,10 @@ const fileUploadOptions = (): Options => ({
     destination: path.join(process.cwd(), 'uploads'),
     filename: (_req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
   }),
-  limits: { fileSize: 150 * 1024 * 1024, files: 20 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
   fileFilter: (_req, file, cb) => {
     if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('File type not allowed'), false);
+    else cb(null, false); // Use null for error, false for rejection
   },
 });
 
@@ -69,7 +68,7 @@ export default class MessagesController {
 
   @Post('/message/send')
   async sendMessage(
-    @UploadedFiles('files', { options: fileUploadOptions() }) files: MulterFile[],
+    @UploadedFiles('files', { options: fileUploadOptions() }) files: Express.Multer.File[],
     @Body() data: any,
     @Res() response: any,
     @Req() req: Request,
@@ -79,7 +78,9 @@ export default class MessagesController {
       // Always use session token for user identification
       const userFromToken = await this.getUserFromToken(req);
       if (!userFromToken) {
-        return response.status(401).json({message: "Uporabnik ni avtenticiran (ni veljavne seje)!"});
+        if (!response.headersSent) {
+          return response.status(401).json({message: "Uporabnik ni avtenticiran (ni veljavne seje)!"});
+        }
       }
 
       let recipents = data.recipents ? JSON.parse(data.recipents) : [];
@@ -91,7 +92,9 @@ export default class MessagesController {
       recipents = recipents.map((r: any) => (typeof r === 'object' && r !== null && 'id' in r) ? r : { id: Number(r) });
 
       if (recipents.length === 0) {
-        return response.status(400).json({message: "Preden želite poslati sporočilo morate najprej izbrati vsaj enega prejemnika!!!"});
+        if (!response.headersSent) {
+          return response.status(400).json({message: "Preden želite poslati sporočilo morate najprej izbrati vsaj enega prejemnika!!!"});
+        }
       }
 
       // Always add the creator as a participant
@@ -211,25 +214,35 @@ export default class MessagesController {
     @Res() response: any,
   ){
     try {
-      const converstions = await AppDataSource.manager.getRepository(Conversation)
-                                                      .createQueryBuilder("conversation")
-                                                      .leftJoinAndSelect("conversation.fk_user_id", "fk_user")
-                                                      .leftJoinAndSelect("fk_user.profileImage", "fk_user_profileImage")
-                                                      .leftJoinAndSelect("conversation.participants", "participants")
-                                                      .leftJoinAndSelect("participants.user", "user")
-                                                      .leftJoinAndSelect("user.profileImage", "user_profileImage")
-                                                      .where(new Brackets((qb) => {
-                                                        qb.where("conversation.fk_user_id = :fk_user_id", { fk_user_id })
-                                                          .orWhere("participants.user.id = :fk_user_id", { fk_user_id });
-                                                      }))
-                                                      .andWhere("conversation.isDeleted = :isDeleted", { isDeleted: false })
-                                                      .andWhere("conversation.isBlocked = :isBlocked", { isBlocked: false })
-                                                      .orderBy("conversation.updatedAt", "DESC")
-                                                      .distinct(true)
-                                                      .getMany();
+      // Fix: Use req as any to access query property
+      const page = parseInt((req as any).query?.page) > 0 ? parseInt((req as any).query.page) : 1;
+      const limit = 20;
+      const skip = (page - 1) * limit;
+      const [converstions, total] = await AppDataSource.manager.getRepository(Conversation)
+        .createQueryBuilder("conversation")
+        .leftJoinAndSelect("conversation.fk_user_id", "fk_user")
+        .leftJoinAndSelect("fk_user.profileImage", "fk_user_profileImage")
+        .leftJoinAndSelect("conversation.participants", "participants")
+        .leftJoinAndSelect("participants.user", "user")
+        .leftJoinAndSelect("user.profileImage", "user_profileImage")
+        .where(new Brackets((qb) => {
+          qb.where("conversation.fk_user_id = :fk_user_id", { fk_user_id })
+            .orWhere("participants.user.id = :fk_user_id", { fk_user_id });
+        }))
+        .andWhere("conversation.isDeleted = :isDeleted", { isDeleted: false })
+        .andWhere("conversation.isBlocked = :isBlocked", { isBlocked: false })
+        .orderBy("conversation.updatedAt", "DESC")
+        .distinct(true)
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount();
 
-
-      return response.status(200).json(converstions);
+      return response.status(200).json({
+        conversations: converstions,
+        page,
+        pageSize: limit,
+        total
+      });
 
     } catch (error: any) {
       return response.status(500).json({message:  error.message});
@@ -403,7 +416,7 @@ export default class MessagesController {
 
   @Post('/message/send/text/:conversation_id')
   async sendTextMessage(
-    @UploadedFiles('files', { options: fileUploadOptions() }) files: MulterFile[],
+    @UploadedFiles('files', { options: fileUploadOptions() }) files: Express.Multer.File[],
     @Param('conversation_id') conversation_id: number,
     @Body() data: any,
     @Res() response: any,

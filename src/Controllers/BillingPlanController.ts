@@ -2,7 +2,8 @@
 const planUndoStack: any[] = [];
 
 import { AppDataSource } from './../data-source';
-import { Request, Response } from 'express';
+import * as multer from 'multer';
+import type { Options } from 'multer';
 import { Body, CurrentUser, Delete, Get, JsonController, Param, Patch, Post, Put, QueryParam, Req, Res } from 'routing-controllers';
 import { BillingPlan } from '../entity/BillingPlan';
 import { BillingPlanIcons } from '../entity/BillingPlanIcons';
@@ -16,7 +17,7 @@ export class BillingPlanController {
    * GET /billing/plans/:planId/icons/key/:key
    */
   @Get('/:planId/icons/key/:key')
-  async getPlanIconsByKey(@Param('planId') planId: number, @Param('key') key: string, @Res() res: Response) {
+  async getPlanIconsByKey(@Param('planId') planId: number, @Param('key') key: string, @Res() res: any) {
     try {
       const iconRepo = AppDataSource.getRepository(BillingPlanIcons);
       const icons = await iconRepo.find({ where: { billingPlanId: planId, key } });
@@ -27,7 +28,7 @@ export class BillingPlanController {
   }
   // Support POST /billing/icons for legacy or frontend compatibility
   @Post('/icons')
-  async addIconViaFlatEndpoint(@Body() iconData: { label: string, key: string, iconUrl?: string, planId?: number }, @Res() res: Response) {
+  async addIconViaFlatEndpoint(@Body() iconData: { label: string, key: string, iconUrl?: string, planId?: number }, @Res() res: any) {
     if (!iconData.planId) {
       return res.status(400).json({ message: 'Missing planId in request body.' });
     }
@@ -40,7 +41,7 @@ export class BillingPlanController {
      * POST /billing/plans/:planId/icons
      */
     @Post('/billing/plans/:planId/icons')
-    async createBillingPlanIcon(@Param('planId') planId: number, @Body() body: any, @Req() req: Request, @Res() res: Response) {
+    async createBillingPlanIcon(@Param('planId') planId: number, @Body() body: any, @Req() req: Request, @Res() res: any) {
       try {
         const { key, label, iconUrl } = body;
         console.log('[createBillingPlanIcon] Received planId:', planId, 'body:', body);
@@ -71,10 +72,14 @@ export class BillingPlanController {
           ...savedIcon,
           billingPlanId: savedIcon?.billingPlan?.id || planId
         };
-        return res.status(201).json(iconResponse);
+        if (!res.headersSent) {
+          return res.status(201).json(iconResponse);
+        }
       } catch (error: any) {
         console.error('Error creating billing plan icon:', error);
-        return res.status(500).json({ message: 'Internal server error.' });
+        if (!res.headersSent) {
+          return res.status(500).json({ message: 'Internal server error.' });
+        }
       }
     }
   /**
@@ -82,7 +87,7 @@ export class BillingPlanController {
    * GET /billing/plans/:planId/icons/user/:userId
    */
   @Get('/:planId/icons/user/:userId')
-  async getPlanIconsForUser(@Param('planId') planId: number, @Param('userId') userId: number, @Res() res: Response) {
+  async getPlanIconsForUser(@Param('planId') planId: number, @Param('userId') userId: number, @Res() res: any) {
     try {
       const planRepo = AppDataSource.getRepository(BillingPlan);
       const iconRepo = AppDataSource.getRepository(BillingPlanIcons);
@@ -109,7 +114,7 @@ export class BillingPlanController {
   }
 
   @Get('/')
-  async listPlans(@Res() res: Response) {
+  async listPlans(@Res() res: any) {
     try {
       const planRepo = AppDataSource.getRepository(BillingPlan);
       const plans = await planRepo.find({ relations: ['icons'] });
@@ -120,7 +125,7 @@ export class BillingPlanController {
   }
 
   @Get('/:planId/icons')
-  async getPlanIcons(@Param('planId') planId: number, @Res() res: Response) {
+  async getPlanIcons(@Param('planId') planId: number, @Res() res: any) {
     try {
       const planRepo = AppDataSource.getRepository(BillingPlan);
       const plan = await planRepo.findOne({
@@ -141,7 +146,7 @@ export class BillingPlanController {
   }
 
     @Get('/:planId')
-    async getPlan(@Param('planId') planId: number, @Res() res: Response) {
+    async getPlan(@Param('planId') planId: number, @Res() res: any) {
       try {
         const planRepo = AppDataSource.getRepository(BillingPlan);
         const plan = await planRepo.findOneBy({ id: planId });
@@ -153,7 +158,7 @@ export class BillingPlanController {
     }
 
     @Post('/')
-    async createPlan(@Body() body: Partial<BillingPlan>, @Res() res: Response) {
+    async createPlan(@Body() body: Partial<BillingPlan>, @Res() res: any) {
       try {
         if (!body?.slug || !body?.name) {
           return res.status(400).json({ message: 'Missing required fields.' });
@@ -184,7 +189,7 @@ export class BillingPlanController {
     }
 
     @Put('/:id')
-    async updatePlan(@Param('id') id: number, @Body() body: Partial<BillingPlan>, @Res() res: Response) {
+    async updatePlan(@Param('id') id: number, @Body() body: Partial<BillingPlan>, @Res() res: any) {
       try {
         const planRepo = AppDataSource.getRepository(BillingPlan);
         const plan = await planRepo.findOneBy({ id: Number(id) });
@@ -216,7 +221,7 @@ export class BillingPlanController {
     }
 
     @Patch('/:id/active')
-    async setPlanActive(@Param('id') id: number, @Body() body: { active?: boolean }, @Res() res: Response) {
+    async setPlanActive(@Param('id') id: number, @Body() body: { active?: boolean }, @Res() res: any) {
       try {
         const planRepo = AppDataSource.getRepository(BillingPlan);
         const plan = await planRepo.findOneBy({ id: Number(id) });
@@ -230,7 +235,7 @@ export class BillingPlanController {
     }
 
     @Delete('/:id')
-    async deletePlan(@Param('id') id: number, @Res() res: Response) {
+    async deletePlan(@Param('id') id: number, @Res() res: any) {
       try {
         const planRepo = AppDataSource.getRepository(BillingPlan);
         const plan = await planRepo.findOneBy({ id: Number(id) });
@@ -251,7 +256,7 @@ export class BillingPlanController {
     }
     // Undo last update or delete (restores last plan state)
     @Post('/seed')
-    async seedPlans(@Res() res: Response) {
+    async seedPlans(@Res() res: any) {
       try {
         const planRepo = AppDataSource.getRepository(BillingPlan);
         const defaults: Array<Partial<BillingPlan>> = [
@@ -318,7 +323,7 @@ export class BillingPlanController {
     }
 
     @Get('/:planId/users')
-    async getUsersByPlan(@Param('planId') planId: number, @Req() req: Request, @Res() res: Response) {
+    async getUsersByPlan(@Param('planId') planId: number, @Req() req: Request, @Res() res: any) {
       try {
         // Users with fk_billing_plan_id = planId
         const userRepo = AppDataSource.getRepository(User);
@@ -330,6 +335,8 @@ export class BillingPlanController {
             'U.id', 'U.username', 'U.email', 'U.first_name', 'U.last_name', 'U.stripe_customer_id',
             'profileImage.id', 'profileImage.path'
           ])
+          .skip(0)
+          .take(20)
           .getMany();
         // Users with a UserPackageSelection for this plan
         const upsRepo = AppDataSource.getRepository(UserPackageSelection);
@@ -378,7 +385,7 @@ export class BillingPlanController {
       }
     }
   @Post('/:planId/icons')
-  async addIconToPlan(@Param('planId') planId: number, @Body() iconData: { label: string, key: string, iconUrl?: string }, @Res() res: Response) {
+  async addIconToPlan(@Param('planId') planId: number, @Body() iconData: { label: string, key: string, iconUrl?: string }, @Res() res: any) {
     try {
       const planRepo = AppDataSource.getRepository(BillingPlan);
       const iconRepo = AppDataSource.getRepository(BillingPlanIcons);
@@ -397,7 +404,7 @@ export class BillingPlanController {
   }
 
   @Delete('/:planId/icons/:iconId')
-  async removeIconFromPlan(@Param('planId') planId: number, @Param('iconId') iconId: number, @Res() res: Response) {
+  async removeIconFromPlan(@Param('planId') planId: number, @Param('iconId') iconId: number, @Res() res: any) {
     try {
       const iconRepo = AppDataSource.getRepository(BillingPlanIcons);
       const icon = await iconRepo.findOne({ where: { id: iconId, billingPlan: { id: planId } } });
@@ -414,7 +421,7 @@ export class BillingPlanController {
    * GET /billing/user-package-selection/user/:userId
    */
   @Get('/user-package-selection/user/:userId')
-  async getUserPackageSelectionByUser(@Param('userId') userId: number, @Res() res: Response) {
+  async getUserPackageSelectionByUser(@Param('userId') userId: number, @Res() res: any) {
     try {
       const upsRepo = AppDataSource.getRepository(require('../entity/UserPackageSelection').UserPackageSelection);
       // Get the most recent selection for the user (assuming higher id = more recent)

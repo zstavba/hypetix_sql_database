@@ -1,10 +1,10 @@
 import { Get, JsonController, Res } from 'routing-controllers';
-import { Response } from 'express';
+import multer, { Options } from 'multer';
 
 @JsonController()
 export class GeneralServicesController {
   @Get('/general-services')
-  getGeneralServices(@Res() res: Response) {
+  getGeneralServices(@Res() res: any) {
     const generalServices = [
       {
         name: 'Digital products',
@@ -36,6 +36,8 @@ export class GeneralServicesController {
         ]
       }
     ];
-    return res.status(200).json(generalServices);
+    if (!res.headersSent) {
+      return res.status(200).json(generalServices);
+    }
   }
 }

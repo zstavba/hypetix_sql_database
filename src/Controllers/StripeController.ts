@@ -1,10 +1,5 @@
-
-
-
-
-
 import { AppDataSource } from './../data-source';
-import { Request, Response } from 'express';
+// Remove: import { Request } from 'express';
 import { Body, CurrentUser, Delete, Get, JsonController, Param, Patch, Post, Put, QueryParam, Req, Res } from 'routing-controllers';
 import { BillingPlan } from '../entity/BillingPlan';
 import { User } from '../entity/User';
@@ -38,7 +33,7 @@ export default class StripeController {
   @Get('/stripe/customers/plan/:planId')
   async getStripeCustomersForPlan(
     @Param('planId') planId: string,
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       const stripe = this.getStripe();
@@ -73,7 +68,7 @@ export default class StripeController {
    * Get all Stripe prices (with product info)
    */
   @Get('/stripe/prices')
-  async getStripePrices(@Res() res: Response) {
+  async getStripePrices(@Res() res: any) {
     try {
       const stripe = this.getStripe();
       const prices = await stripe.prices.list({ limit: 100, expand: ['data.product'] });
@@ -89,7 +84,7 @@ export default class StripeController {
    * Get all Stripe products (sandbox)
    */
   @Get('/stripe/products')
-  async getStripeProducts(@Res() res: Response) {
+  async getStripeProducts(@Res() res: any) {
     try {
       const stripe = this.getStripe();
       // Fetch all products from Stripe (sandbox)
@@ -103,7 +98,7 @@ export default class StripeController {
   @Get('/billing/plans/:planId/users')
   async getUsersByPlan(
     @Param('planId') planId: number,
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       // Users with fk_billing_plan_id = planId, always join profileImage
@@ -112,6 +107,8 @@ export default class StripeController {
         .createQueryBuilder('U')
         .leftJoinAndSelect('U.profileImage', 'profileImage')
         .where('U.fk_billing_plan_id = :planId', { planId })
+        .skip(0)
+        .take(20)
         .getMany();
 
       // Users with a UserPackageSelection for this plan
@@ -152,7 +149,7 @@ export default class StripeController {
    * GET /user-package-selection/user/:userId
    */
   @Get('/user-package-selection/user/:userId')
-  async getUserPackageSelectionByUser(@Param('userId') userId: number, @Res() res: Response) {
+  async getUserPackageSelectionByUser(@Param('userId') userId: number, @Res() res: any) {
     try {
       const upsRepo = AppDataSource.getRepository(require('../entity/UserPackageSelection').UserPackageSelection);
       // Get the most recent selection for the user (assuming higher id = more recent)
@@ -170,7 +167,7 @@ export default class StripeController {
   @Get('/billing/plans')
   async listPlans(
     @QueryParam('includeInactive') includeInactive: string | boolean,
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       const query = AppDataSource.getRepository(BillingPlan)
@@ -181,7 +178,7 @@ export default class StripeController {
         query.where('P.active = 1');
       }
 
-      const plans = await query.getMany();
+      const plans = await query.skip(0).take(20).getMany();
 
       return res.status(200).json(plans);
     } catch (error: any) {
@@ -190,7 +187,7 @@ export default class StripeController {
   }
 
   @Get('/billing/current')
-  async getCurrentPlan(@CurrentUser() user: User | null, @Res() res: Response) {
+  async getCurrentPlan(@CurrentUser() user: User | null, @Res() res: any) {
     try {
       if (!user?.id) return res.status(401).json({ message: 'Unauthorized' });
       const current = await AppDataSource.getRepository(User)
@@ -228,7 +225,7 @@ export default class StripeController {
   async subscribe(
     @CurrentUser() user: User | null,
     @Body() body: { planId?: number; slug?: string },
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       if (!user?.id) return res.status(401).json({ message: 'Unauthorized' });
@@ -310,8 +307,8 @@ export default class StripeController {
   async createCheckoutSession(
     @CurrentUser() user: User | null,
     @Body() body: { planId?: number },
-    @Req() req: Request,
-    @Res() res: Response
+    @Req() req: any,
+    @Res() res: any
   ) {
     try {
       // Fallback: If user is null, try to get user from session_token in headers or cookies
@@ -412,7 +409,7 @@ export default class StripeController {
   async confirmCheckout(
     @CurrentUser() user: User | null,
     @QueryParam('session_id') sessionId: string,
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       if (!user?.id) return res.status(401).json({ message: 'Unauthorized' });
@@ -478,7 +475,7 @@ export default class StripeController {
   }
 
   @Post('/billing/plans/seed')
-  async seedPlans(@Res() res: Response) {
+  async seedPlans(@Res() res: any) {
     try {
       const planRepo = AppDataSource.getRepository(BillingPlan);
       const defaults: Array<Partial<BillingPlan>> = [
@@ -550,7 +547,7 @@ export default class StripeController {
   async createPlan(
     @CurrentUser() user: User | null,
     @Body() body: Partial<BillingPlan>,
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       if (!user?.id) return res.status(401).json({ message: 'Unauthorized' });
@@ -585,14 +582,12 @@ export default class StripeController {
     }
   }
 
-// Duplicate updatePlan removed. Only the correct implementation below remains.
- 
   @Patch('/billing/plans/:id/active')
   async setPlanActive(
     @CurrentUser() user: User | null,
     @Param('id') id: number,
     @Body() body: { active?: boolean },
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       if (!user?.id) return res.status(401).json({ message: 'Unauthorized' });
@@ -621,7 +616,7 @@ export default class StripeController {
   async deletePlan(
     @CurrentUser() user: User | null,
     @Param('id') id: number,
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       if (!user?.id) return res.status(401).json({ message: 'Unauthorized' });
@@ -662,7 +657,7 @@ export default class StripeController {
   @Post('/stripe/create-customer')
   async createStripeCustomer(
     @Body() body: any,
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       const stripe = this.getStripe();
@@ -728,7 +723,7 @@ export default class StripeController {
    * GET /stripe/customers
    */
   @Get('/stripe/customers')
-  async getAllStripeCustomers(@Res() res: Response) {
+  async getAllStripeCustomers(@Res() res: any) {
     try {
       const stripe = this.getStripe();
       const customers = await stripe.customers.list({ limit: 100 });
@@ -772,7 +767,7 @@ export default class StripeController {
   async updateStripeCustomer(
     @Param('customerId') customerId: string,
     @Body() body: { first_name?: string; last_name?: string; email?: string },
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       const stripe = this.getStripe();
@@ -798,7 +793,7 @@ export default class StripeController {
   @Delete('/stripe/customer/:customerId')
   async deleteStripeCustomer(
     @Param('customerId') customerId: string,
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       const stripe = this.getStripe();
@@ -819,7 +814,7 @@ export default class StripeController {
   async createStripeProductAndPlan(
     @Body() body: any,
     @CurrentUser() user: User | null,
-    @Res() res: Response
+    @Res() res: any
   ) {
     try {
       const stripe = this.getStripe();

@@ -1,16 +1,14 @@
 import { AppDataSource } from './../data-source';
-import { Request, Response, NextFunction } from 'express';
+import { Request, NextFunction } from 'express';
 import { JsonController, Post, Body, Req, Res, Get, Delete, UseBefore, UploadedFile, Param, createExpressServer, UploadedFiles } from 'routing-controllers';
 import { User } from '../entity/User';
-import * as bcyrpt from 'bcrypt';
+import * as bcyrpt from 'bcryptjs';
 import { UserSession } from '../entity/UserSession';
 import * as crypto from "crypto";
-import * as multer from 'multer';
-import type { Options } from 'multer';
+import multer, { Options } from 'multer';
 import path = require('path');
 import * as fs from 'fs';
 import { UserImages } from '../entity/UserImages';
-import type { Express } from 'express';
 import { UserFavorites } from '../entity/UserFavorites';
 import { NewsCategory } from '../entity/NewsCategory';
 import { News } from '../entity/News';
@@ -28,10 +26,10 @@ const fileUploadOptions = (): Options => ({
     destination: path.join(process.cwd(), 'uploads'),
     filename: (_req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
   }),
-  limits: { fileSize: 150 * 1024 * 1024, files: 20 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype?.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only images are allowed'), false);
+    else cb(null, false); // Use null for error, false for rejection
   },
 });
 
@@ -41,7 +39,7 @@ const upload = multer(fileUploadOptions());
 export default class NewsController {
 
     @Post('/news/create/category')
-    async create_category( @Body() data: any, @Req() req: Request, @Res() res: Response){
+    async create_category( @Body() data: any, @Req() req: Request, @Res() res: any){
         try {
 
             let NC: NewsCategory = new NewsCategory();
@@ -50,19 +48,23 @@ export default class NewsController {
 
             await AppDataSource.manager.save(NC);
 
-            return res.status(200).json({
+            if (!res.headersSent) {
+              return res.status(200).json({
                 message: "Podatki za kategorijo so bili uspešno ustvarjeni !!!"
-            })
+              });
+            }
 
         } catch (error: Error | any) {
+          if (!res.headersSent) {
             return res.status(401).json({
-                message: error.message
+              message: error.message
             });
+          }
         }
     }
 
     @Delete('/news/delete/category/:id')
-    async delete_category (@Param('id') id: string, @Req() req: Request, @Res() res: Response) {
+    async delete_category (@Param('id') id: string, @Req() req: Request, @Res() res: any) {
       try {
 
         let findCategory = await AppDataSource.manager.getRepository(NewsCategory)
@@ -96,7 +98,7 @@ export default class NewsController {
     }
 
     @Post('/news/category/update/:id')
-    async update_category (@Param('id') id: string, @Body() data: any, @Req() req: Request, @Res() res: Response) {
+    async update_category (@Param('id') id: string, @Body() data: any, @Req() req: Request, @Res() res: any) {
       try {
 
         let findCategory = await AppDataSource.manager.getRepository(NewsCategory)
@@ -133,12 +135,14 @@ export default class NewsController {
     }
 
     @Get('/news/get/category')
-    async get_categories (@Req() req: Request, @Res() res: Response) {
+    async get_categories (@Req() req: Request, @Res() res: any) {
         try {
           const rows = await AppDataSource.getRepository(NewsCategory)
                                           .createQueryBuilder("NC")
                                           .leftJoinAndSelect("NC.fk_user_id","User")
                                           .leftJoinAndSelect("NC.news", "News", "News.blocked = :blocked", { blocked: false })                                          
+                                          .skip(0)
+                                          .take(20)
                                           .getMany();
 
             return res.status(200).json(rows);
@@ -151,7 +155,7 @@ export default class NewsController {
     }
 
     @Post('/news/create/item')
-    async create_news_item ( @Body() data: any, @Req() req: Request, @Res() res: Response){
+    async create_news_item ( @Body() data: any, @Req() req: Request, @Res() res: any){
         try {
 
             let fk_category_id: NewsCategory = data.fk_category_id as NewsCategory;
@@ -179,7 +183,7 @@ export default class NewsController {
     }
 
     @Get('/news/get/news/:username')
-    async getUserNewsbyusername (@Param('username') username: string, @Req() req: Request, @Res() res: Response ) {
+    async getUserNewsbyusername (@Param('username') username: string, @Req() req: any, @Res() res: any ) {
 
       try {
 
@@ -193,16 +197,23 @@ export default class NewsController {
         if(!findUser)
           throw new Error(`Napaka: Iskan uporabnik ne obstaja !!!`);
 
-        let findNews = await AppDataSource.manager.getRepository(News)
-                                                  .createQueryBuilder("N")
-                                                  .leftJoinAndSelect("N.fk_user_id","User")
-                                                  .leftJoinAndSelect("User.profileImage","ProfileImage")
-                                                  .leftJoinAndSelect('N.fk_album_id',"UserImages")
-                                                  .leftJoinAndSelect('N.fk_category_id',"NewsCategory")
-                                                  .where({
-                                                    fk_user_id: findUser
-                                                  })
-                                                  .getMany();
+        const page = parseInt((req as any).query.page) > 0 ? parseInt((req as any).query.page) : 1;
+        const limit = 20;
+        const skip = (page - 1) * limit;
+        let [findNews, total] = await AppDataSource.manager.getRepository(News)
+          .createQueryBuilder("N")
+          .leftJoinAndSelect("N.fk_user_id","User")
+          .leftJoinAndSelect("User.profileImage","ProfileImage")
+          .leftJoinAndSelect('N.fk_album_id',"UserImages")
+          .leftJoinAndSelect('N.fk_category_id',"NewsCategory")
+          .where({
+            fk_user_id: findUser
+          })
+          .skip(skip)
+          .take(limit)
+          .skip(skip)
+          .take(limit)
+          .getManyAndCount();
                                       
       if(findNews.length <= 0)
         throw new Error(`Napaka: Tvoj seznam oglasov je prazen.`)
@@ -218,7 +229,7 @@ export default class NewsController {
     }
 
     @Get("/news/get/by/category/:category")
-    async getNewsbyCategory (@Param('category') category: string, @Req() reqq: Request, @Res() res: Response) {
+    async getNewsbyCategory (@Param('category') category: string, @Req() reqq: Request, @Res() res: any) {
       try {
 
         let findCategory = await AppDataSource.manager.getRepository(NewsCategory)
@@ -242,6 +253,8 @@ export default class NewsController {
                                                     fk_category_id: findCategory,
                                                     blocked: false
                                                   })
+                                                  .skip(0)
+                                                  .take(20)
                                                   .getMany();
 
         return res.status(200).json(findNews);
@@ -255,7 +268,7 @@ export default class NewsController {
     }
 
     @Delete('/news/delete/:id')
-    async deleteNewsByID (@Param('id') id: string, @Req() req: Request, @Res() res: Response) {
+    async deleteNewsByID (@Param('id') id: string, @Req() req: Request, @Res() res: any) {
       try {
 
         let findNews = await AppDataSource.manager.getRepository(News)
@@ -304,7 +317,7 @@ export default class NewsController {
     }
 
     @Post('/news/block')
-    async blockSelectedNews (@Body() data: any, @Req() req: Request, @Res() res: Response){
+    async blockSelectedNews (@Body() data: any, @Req() req: Request, @Res() res: any){
       try {
 
         let findUser = await AppDataSource.manager.getRepository(User)
@@ -352,7 +365,7 @@ export default class NewsController {
     }
 
     @Get('/news/get/blocked')
-    async get_blocked_news (@Req() req: Request, @Res() res: Response) {
+    async get_blocked_news (@Req() req: Request, @Res() res: any) {
       try {
 
         let findBlockedNews = await AppDataSource.manager.getRepository(News)
@@ -377,7 +390,7 @@ export default class NewsController {
 
 
     @Get('/news/unblock/:id')
-    async unblock_selected_news (@Param('id') id: string, @Req() req: Request, @Res() res: Response) {
+    async unblock_selected_news (@Param('id') id: string, @Req() req: Request, @Res() res: any) {
       try {
 
         let findNews = await AppDataSource.manager.getRepository(News)

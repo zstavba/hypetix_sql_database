@@ -1,7 +1,4 @@
-
-
 import { User } from './../entity/User';
-import { Request, Response } from 'express';
 import { Router } from 'express';
 import { AppDataSource } from '../data-source';
 import { Notification } from '../entity/Notification';
@@ -11,7 +8,7 @@ import { Body, Delete, Get, Post, Put, Req, Res, JsonController } from 'routing-
 export class NotificationController {
 
         @Post('/notification/friend-request')
-        async createFriendRequestNotification(@Body() data: any, @Req() req: Request, @Res() res: Response) {
+        async createFriendRequestNotification(@Body() data: any, @Req() req: any, @Res() res: any) {
           try {
             const fk_user_id: User = data.fk_user_id as User;
             let fk_friends_id: User[] = data.fk_friends_id as User[];
@@ -65,14 +62,18 @@ export class NotificationController {
               // Socket.IO not available, skip real-time emit
             }
 
-            return res.status(200).json({ message: 'Friend request notification created successfully' });
+            if (!res.headersSent) {
+              return res.status(200).json({ message: 'Friend request notification created successfully' });
+            }
           } catch (error: Error | any) {
-            return res.status(401).json({ error: error.message });
+            if (!res.headersSent) {
+                return res.status(401).json({ error: error.message });
+            }
           }
         }
 
          @Get('/notification/user/:id')
-        async getUserNotifications(@Req() req: Request, @Res() res: Response) {
+        async getUserNotifications(@Req() req: any, @Res() res: any) {
                   const { id } = req.params;
                   const notificationRepo = AppDataSource.getRepository(Notification);
                   // Find notifications where fk_user_id = id
@@ -92,6 +93,8 @@ export class NotificationController {
                     .leftJoinAndSelect('notification.fk_friends_id', 'fk_friends_id')
                     .where(':userId IN (SELECT nf.userId FROM notifications_friends nf WHERE nf.notificationId = notification.id)', { userId: Number(id) })
                     .andWhere('notification.read = false')
+                    .skip(0)
+                    .take(20)
                     .getMany();
 
                   // Merge and deduplicate notifications
@@ -116,7 +119,7 @@ export class NotificationController {
 
 
         @Post('/notification/create-album-video')          // ...existing code...
-        async createAlbumVideo(@Body() data: any, @Req() req: Request, @Res() res: Response) {
+        async createAlbumVideo(@Body() data: any, @Req() req: any, @Res() res: any) {
           try {
             const fk_user_id: User = data.fk_user_id as User;
             const title: string = data.title;
@@ -182,7 +185,7 @@ export class NotificationController {
         }
 
         @Put('/notification/:id')
-        async updateNotification(@Body() data: any, @Req() req: Request, @Res() res: Response) {
+        async updateNotification(@Body() data: any, @Req() req: any, @Res() res: any) {
           const { id } = req.params;
           const { title, read } = data;
           const notificationRepo = AppDataSource.getRepository(Notification);
@@ -195,7 +198,7 @@ export class NotificationController {
         }
 
         @Delete('/notification/:id')
-        async deleteNotification(@Req() req: Request, @Res() res: Response) {
+        async deleteNotification(@Req() req: any, @Res() res: any) {
           const { id } = req.params;
           const notificationRepo = AppDataSource.getRepository(Notification);
           const notification = await notificationRepo.findOneBy({ id: Number(id) });
@@ -205,7 +208,7 @@ export class NotificationController {
         }
      
         @Put('/notification/user/:id/read-all')
-        async markAllAsRead(@Req() req: Request, @Res() res: Response) {
+        async markAllAsRead(@Req() req: any, @Res() res: any) {
           const { id } = req.params;
           const notificationRepo = AppDataSource.getRepository(Notification);
           await notificationRepo.createQueryBuilder()

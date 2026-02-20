@@ -1,16 +1,14 @@
 import { AppDataSource } from './../data-source';
-import { Request, Response, NextFunction } from 'express';
+import { Request, NextFunction } from 'express';
 import { JsonController, Post, Body, Req, Res, Get, Delete, UseBefore, UploadedFile, Param, createExpressServer, UploadedFiles } from 'routing-controllers';
 import { User } from '../entity/User';
-import * as bcyrpt from 'bcrypt';
+import * as bcyrpt from 'bcryptjs';
 import { UserSession } from '../entity/UserSession';
 import * as crypto from "crypto";
-import * as multer from 'multer';
-import type { Options } from 'multer';
+import multer, { Options } from 'multer';
 import path = require('path');
 import * as fs from 'fs';
 import { UserImages } from '../entity/UserImages';
-import type { Express } from 'express';
 import { UserFavorites } from '../entity/UserFavorites';
 import { News } from '../entity/News';
 import { Comment } from '../entity/Comment';
@@ -25,13 +23,12 @@ const fileUploadOptions = (): Options => ({
     destination: path.join(process.cwd(), 'uploads'),
     filename: (_req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
   }),
-  limits: { fileSize: 150 * 1024 * 1024, files: 20 },
+    limits: { fileSize: 10 * 1024 * 1024, files: 5 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype?.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only images are allowed'), false);
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(null, false); // Use null for error, false for rejection
   },
 });
-
 const upload = multer(fileUploadOptions());
 
 @JsonController()
@@ -40,7 +37,7 @@ export default class CommentController {
 @Post('/comments/send')
 async sendComment(
   @Req() request: Request,
-  @Res() response: Response,
+  @Res() response: any,
   @Body() data: any
 ) {
   try {
@@ -65,16 +62,20 @@ async sendComment(
     
     await AppDataSource.getRepository(Comment).save(c);
 
-    return response.status(200).json({ message: "Izbrana novica je bila uspešno komentirana !!!" });
-  } catch (error: any) {
-    return response.status(401).json({ message: error.message });
-  }
+    if (!response.headersSent) {
+        return response.status(200).json({ message: "Izbrana novica je bila uspešno komentirana !!!" });
+    }
+    } catch (error: any) {
+        if (!response.headersSent) {
+                return response.status(401).json({ message: error.message });
+        }
+    }
 }
 
 @Post('/comments/send/video')
 async sendVideoComment(
     @Req() request: Request,
-    @Res() response: Response,
+    @Res() response: any,
     @Body() data: any
 ) {
     try {
@@ -105,7 +106,7 @@ async sendVideoComment(
     @Get('/comments/get/:newsID')
     async getCommentsForNews(
         @Req() request: Request,
-        @Res() response: Response, 
+        @Res() response: any, 
         @Param('newsID') newsID: number
     ) {
         try {   
@@ -118,6 +119,8 @@ async sendVideoComment(
                                                         .andWhere('C.blocked = 0')
                                                         .andWhere('C.deleted_at IS NULL')
                                                         .orderBy('C.created_at', 'DESC')
+                                                        .skip(0)
+                                                        .take(20)
                                                         .getMany();                    
             return response.status(200).json(comments);
 
@@ -130,7 +133,7 @@ async sendVideoComment(
     @Get('/comments/get/video/:videoID')
     async getCommentsForVideo(
         @Req() request: Request,
-        @Res() response: Response, 
+        @Res() response: any, 
         @Param('videoID') videoID: number
     ) {
         try {   
@@ -143,6 +146,8 @@ async sendVideoComment(
                                                         .andWhere('C.blocked = 0')
                                                         .andWhere('C.deleted_at IS NULL')
                                                         .orderBy('C.created_at', 'DESC')
+                                                        .skip(0)
+                                                        .take(20)
                                                         .getMany();
             return response.status(200).json(comments);
 
@@ -155,7 +160,7 @@ async sendVideoComment(
     @Delete('/comments/delete/:commentID')
     async deleteComment(
         @Req() request: Request,
-        @Res() response: Response, 
+        @Res() response: any, 
         @Param('commentID') commentID: number
     ) {
         try {
@@ -180,7 +185,7 @@ async sendVideoComment(
     @Get('/comments/block/:commentID')
     async blockComment(
         @Req() request: Request,
-        @Res() response: Response, 
+        @Res() response: any, 
         @Param('commentID') commentID: number
     ) {
         try {
@@ -202,7 +207,7 @@ async sendVideoComment(
     @Get('/comments/blocked')
     async getBlockedComments(
         @Req() request: Request,
-        @Res() response: Response
+        @Res() response: any
     ) {
         try {
 
@@ -226,7 +231,7 @@ async sendVideoComment(
     @Get('/comments/blocked/video')
     async getBlockedVideoComments(
         @Req() request: Request,
-        @Res() response: Response
+        @Res() response: any
     ) {
         try {
             let comments =  await AppDataSource.manager.getRepository(Comment)
@@ -250,7 +255,7 @@ async sendVideoComment(
     @Get('/comments/unblock/:commentID')    
     async unblockComment(
         @Req() request: Request,
-        @Res() response: Response, 
+        @Res() response: any, 
         @Param('commentID') commentID: number
     ) {
         try {

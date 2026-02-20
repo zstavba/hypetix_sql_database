@@ -1,3 +1,5 @@
+// Load environment variables from .env in development
+require('dotenv').config();
 // This file is CloudLinux/cPanel safe.
 // It runs as a single Node.js process (no cluster, no workers, no child processes)
 // to ensure minimal process usage and avoid exceeding shared hosting limits (e.g., 80 processes).
@@ -24,8 +26,9 @@ import EventsController from "./Controllers/EventsController";
 import { BillingPlanController } from "./Controllers/BillingPlanController";
 import { NotificationController } from "./Controllers/NotificationController";
 import { GeneralServicesController } from "./Controllers/GeneralServicesController";
+import rateLimit from 'express-rate-limit';
 
-const PORT: number = Number(process.env.PORT) || 4000;
+const PORT = process.env.PORT;
 
 AppDataSource.initialize()
   .then(async () => {
@@ -71,21 +74,47 @@ AppDataSource.initialize()
     });
 
     app.set("trust proxy", true)
+
+    // CORS is handled by routing-controllers (cors: true)
+
+    // Set Referrer-Policy header
+    app.use((req, res, next) => {
+      if (!res.headersSent) {
+        res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
+      }
+      next();
+    });
+
+    // Log CPU usage every 10 seconds in development
+    if (process.env.NODE_ENV !== 'production') {
+      setInterval(() => {
+        const usage = process.cpuUsage();
+        const userCPU = (usage.user / 1000).toFixed(2);
+        const systemCPU = (usage.system / 1000).toFixed(2);
+        console.log(`[CPU USAGE] User: ${userCPU}ms, System: ${systemCPU}ms`);
+      }, 10000);
+    }
     // For cPanel: serve static from /uploads if needed
     const uploadsPath = path.join(process.cwd(), 'src', 'uploads');
     app.use('/uploads', (req, res, next) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Range,Content-Type,Accept');
-      res.setHeader('Access-Control-Expose-Headers', 'Content-Range,Accept-Ranges,Content-Length');
-      res.setHeader('Accept-Ranges', 'bytes');
       if (req.method === 'OPTIONS') {
-        return res.sendStatus(204);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Range,Content-Type,Accept');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Range,Accept-Ranges,Content-Length');
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.status(204).end();
+        return;
       }
       next();
     });
     app.use('/uploads', express.static(uploadsPath, {
       setHeaders: (res) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Range,Content-Type,Accept');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Range,Accept-Ranges,Content-Length');
+        res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Cache-Control', 'no-store');
       }
     }));
@@ -96,11 +125,18 @@ AppDataSource.initialize()
         return !contentType.includes('multipart/form-data');
       }
     }));
-    app.use('/uploads', express.static(path.join(process.cwd(), 'src/uploads'), {
-      setHeaders: (res) => {
-        res.setHeader('Cache-Control', 'no-store');
-      }
+
+    // Apply rate limiting globally (100 requests per 15 minutes per IP)
+    app.use(rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100, // limit each IP to 100 requests per windowMs
+      standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+      legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+      message: 'Too many requests from this IP, please try again later.'
     }));
+
+    // Set trust proxy to loopback only for rate limiting security
+    app.set('trust proxy', 'loopback');
 
     // Attach Socket.IO to the HTTP server
     const server = http.createServer(app);
@@ -118,15 +154,18 @@ AppDataSource.initialize()
     setIO(io);
 
     io.on('connection', (socket) => {
-      // You can add your custom events here
-      console.log('Socket.IO client connected:', socket.id);
+      // Only log in non-production environments
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isDev) console.log('Socket.IO client connected:', socket.id);
       // Register user to a room for targeted events
       socket.on('register-user', (userId) => {
         if (userId) {
           socket.join(`user:${userId}`);
-          console.log(`[Socket.IO] Socket ${socket.id} joined room user:${userId}`);
-          // List all rooms for this socket
-          console.log(`[Socket.IO] Rooms for socket ${socket.id}:`, Array.from(socket.rooms));
+          if (isDev) {
+            console.log(`[Socket.IO] Socket ${socket.id} joined room user:${userId}`);
+            // List all rooms for this socket
+            console.log(`[Socket.IO] Rooms for socket ${socket.id}:`, Array.from(socket.rooms));
+          }
           // Emit confirmation event back to client
           socket.emit('register-user-confirmed', { userId, status: 'ok' });
         } else {
@@ -135,23 +174,24 @@ AppDataSource.initialize()
       });
       // Listen for user-update events and emit to both sender and recipient
       socket.on('user-update', (data) => {
-        // Debug: log every user-update event received
-        console.log('[Socket.IO] Received user-update event:', data);
+        if (isDev) console.log('[Socket.IO] Received user-update event:', data);
         if (data.fromUserId) {
           io.to(`user:${data.fromUserId}`).emit('user-update', data);
-          console.log(`[Socket.IO] Emitted user-update to sender room user:${data.fromUserId}`, data);
+          if (isDev) console.log(`[Socket.IO] Emitted user-update to sender room user:${data.fromUserId}`, data);
         }
         if (data.toUserId) {
           io.to(`user:${data.toUserId}`).emit('user-update', data);
-          console.log(`[Socket.IO] Emitted user-update to recipient room user:${data.toUserId}`, data);
+          if (isDev) console.log(`[Socket.IO] Emitted user-update to recipient room user:${data.toUserId}`, data);
         }
         // Emit confirmation event back to client
         socket.emit('user-update-confirmed', { status: 'ok', data });
-        // List all rooms and sockets for debug
-        console.log(`[Socket.IO] All rooms:`, Array.from(io.sockets.adapter.rooms.keys()));
+        if (isDev) {
+          // List all rooms and sockets for debug
+          console.log(`[Socket.IO] All rooms:`, Array.from(io.sockets.adapter.rooms.keys()));
+        }
       });
       socket.on('disconnect', () => {
-        console.log('Socket.IO client disconnected:', socket.id);
+        if (isDev) console.log('Socket.IO client disconnected:', socket.id);
       });
     });
 

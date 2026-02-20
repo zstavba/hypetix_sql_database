@@ -1,16 +1,14 @@
 import { AppDataSource } from './../data-source';
-import { Request, Response, NextFunction } from 'express';
+import { Request, NextFunction } from 'express';
 import { JsonController, Post, Body, Req, Res, Get, Delete, UseBefore, UploadedFile, Param, createExpressServer } from 'routing-controllers';
 import { User } from '../entity/User';
-import * as bcyrpt from 'bcrypt';
+import * as bcyrpt from 'bcryptjs';
 import { UserSession } from '../entity/UserSession';
 import * as crypto from "crypto";
-import * as multer from 'multer';
-import type { Options } from 'multer';
+import multer, { Options } from 'multer';
 import path = require('path');
 import * as fs from 'fs';
 import { UserImages } from '../entity/UserImages';
-import type { Express } from 'express';
 import { UserFavorites } from '../entity/UserFavorites';
 import { UserInformation } from '../entity/UserInformation';
 
@@ -24,10 +22,10 @@ const fileUploadOptions = (): Options => ({
     destination: path.join(process.cwd(), 'uploads'),
     filename: (_req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
   }),
-  limits: { fileSize: 150 * 1024 * 1024, files: 20 },
+    limits: { fileSize: 10 * 1024 * 1024, files: 5 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype?.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only images are allowed'), false);
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(null, false); // Use null for error, false for rejection
   },
 });
 
@@ -43,7 +41,7 @@ export enum FavoriteStatus {
 export default class InformationController {
 
     @Get("/user/info/get/:username")
-    async getInformation (@Param('username') username: string, @Req() req: Request, @Res() res: Response) {
+    async getInformation (@Param('username') username: string, @Req() req: Request, @Res() res: any) {
         try {
 
             let findUser = await AppDataSource.manager.getRepository(User)
@@ -66,19 +64,23 @@ export default class InformationController {
             if(!findInformation)
               throw new Error(`Napaka: Iskan uporabnik '${username}'  ni še vnesel želenih podatkov !`)
 
-            return res.status(200).json(findInformation);
+            if (!res.headersSent) {
+              return res.status(200).json(findInformation);
+            }
                                                                                               
 
         } catch (error: Error | any) {
+          if (!res.headersSent) {
             return res.status(401).json({
-                message: error.message
+              message: error.message
             });
+          }
         }
 
 
     }
     @Post("/user/info/create")
-    async createInformation (@Body() data: any, @Req() req: Request, @Res() res: Response) {
+    async createInformation (@Body() data: any, @Req() req: Request, @Res() res: any) {
         try {
           const user = data.fk_user_id as User;
 

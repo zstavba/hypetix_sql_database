@@ -2,19 +2,17 @@ import { BillingPlan } from '../entity/BillingPlan';
 import { BillingPlanIcons } from '../entity/BillingPlanIcons';
 
 import { AppDataSource } from './../data-source';
-import { Request, Response, NextFunction } from 'express';
+import { NextFunction } from 'express';
 import { JsonController, Post, Body, Req, Res, Get, Delete, UseBefore, UploadedFile, Param, createExpressServer, UploadedFiles, Put } from 'routing-controllers';
 import { User } from '../entity/User';
 const { sendWelcomeEmail } = require("../utils/mailer");
-import * as bcyrpt from 'bcrypt';
+import * as bcyrpt from 'bcryptjs';
 import { UserSession } from '../entity/UserSession';
 import * as crypto from "crypto";
-import * as multer from 'multer';
-import type { Options } from 'multer';
+import multer, { Options } from 'multer';
 import path = require('path');
 import * as fs from 'fs';
 import { UserImages } from '../entity/UserImages';
-import type { Express } from 'express';
 import { UserFavorites } from '../entity/UserFavorites';
 import { UserInformation } from '../entity/UserInformation';
 import { Notification } from '../entity/Notification';
@@ -29,10 +27,10 @@ const fileUploadOptions = (): Options => ({
     destination: path.join(process.cwd(), 'uploads'),
     filename: (_req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
   }),
-  limits: { fileSize: 150 * 1024 * 1024, files: 20 },
+    limits: { fileSize: 10 * 1024 * 1024, files: 5 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype?.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only images are allowed'), false);
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(null, false); // Use null for error, false for rejection
   },
 });
 
@@ -54,21 +52,23 @@ export default class UserController {
      * GET /user/:fk_user_id/friends
      */
     @Get('/user/:fk_user_id/friends')
-    async getUserFriends(@Param('fk_user_id') fk_user_id: number, @Res() res: Response) {
+    async getUserFriends(@Param('fk_user_id') fk_user_id: number, @Res() res: any) {
         try {
             const favorites = await AppDataSource.getRepository(UserFavorites)
                 .createQueryBuilder('f')
-                .leftJoinAndSelect('f.fk_user_one_id', 'userOne')
-                .leftJoinAndSelect('f.fk_user_two_id', 'userTwo')
                 .where('(f.fk_user_one_id = :id OR f.fk_user_two_id = :id)', { id: fk_user_id })
                 .andWhere('f.status = :status', { status: 'accepted' })
+                .skip(0)
+                .take(10)
                 .getMany();
+            // Only return minimal friend info
             const friends = favorites.map(fav => {
-                if (fav.fk_user_one_id.id === Number(fk_user_id)) {
-                    return fav.fk_user_two_id;
-                } else {
-                    return fav.fk_user_one_id;
-                }
+                const friend = fav.fk_user_one_id.id === Number(fk_user_id) ? fav.fk_user_two_id : fav.fk_user_one_id;
+                return {
+                    id: friend.id,
+                    username: friend.username,
+                    email: friend.email
+                };
             });
             return res.status(200).json(friends);
         } catch (error: any) {
@@ -85,7 +85,7 @@ export default class UserController {
      * GET /user-session/by-token?session_token=...
      */
     @Get('/user-session/by-token')
-    async getUserBySessionToken(@Req() req: Request, @Res() res: Response) {
+    async getUserBySessionToken(@Req() req: any, @Res() res: any) {
         try {
             const token = String(req.query.session_token || '').trim();
             if (!token) {
@@ -109,13 +109,20 @@ export default class UserController {
         }
     }
     @Get('/user/get/list')
-    async getUsers(@Req() req: Request,@Res() res: Response) {
+    async getUsers(@Req() req: any, @Res() res: any) {
         try {
-            let list = await AppDataSource.manager.getRepository(User)
+            // Pagination params
+            const page = parseInt(req.query.page) > 0 ? parseInt(req.query.page) : 1;
+            const limit = 20;
+            const skip = (page - 1) * limit;
+
+            let [list, total] = await AppDataSource.manager.getRepository(User)
                 .createQueryBuilder("U")
                 .leftJoinAndSelect("U.profileImage", "ProfileImage")
-                .leftJoinAndSelect("U.cover_photo", "coverPhoto")
-                .getMany();
+                .select(["U.id", "U.username", "U.email", "U.first_name", "U.last_name", "ProfileImage.id", "ProfileImage.path"])
+                .skip(skip)
+                .take(limit)
+                .getManyAndCount();
             if (list.length <= 0)
                 throw new Error(`Napaka: Seznam uporabnikov je trenutno prazen !!!`);
 
@@ -128,7 +135,12 @@ export default class UserController {
                 return true;
             });
 
-            return res.status(200).json(uniqueList);
+            return res.status(200).json({
+                users: uniqueList,
+                page,
+                pageSize: limit,
+                total
+            });
         } catch (error: Error | any) {
             return res.status(401).json({
                 message: error.message
@@ -137,7 +149,7 @@ export default class UserController {
     }
 
     @Get('/user/get/:username')
-    async getUserInformation(@Param('username' ) username: string ,@Req() req: Request, @Res() res: Response) {
+    async getUserInformation(@Param('username' ) username: string ,@Req() req: any, @Res() res: any) {
         try {
             let findUser = await AppDataSource.manager.getRepository(User)
                 .createQueryBuilder("U")
@@ -154,7 +166,7 @@ export default class UserController {
 
 
     @Get('/user/get/id/:id')
-    async getUserById(@Param('id') id: number, @Req() req: Request, @Res() res: Response) {
+    async getUserById(@Param('id') id: number, @Req() req: any, @Res() res: any) {
         try {
             let findUser = await AppDataSource.manager.getRepository(User)
                                                       .createQueryBuilder("U")
@@ -178,7 +190,7 @@ export default class UserController {
 
 
     @Get('/user/get/information/:username')
-    async get_user_information_by_id (@Param('username') username: string, @Req() req: Request, @Res() res: Response) {
+    async get_user_information_by_id (@Param('username') username: string, @Req() req: any, @Res() res: any) {
         try {
 
             let findUser = await AppDataSource.manager.getRepository(User)
@@ -217,7 +229,7 @@ export default class UserController {
 
 
     @Get('/user/get/location/:username')
-    async get_user_location_by_username(@Param('username') username: string, @Req() req: Request, @Res() res: Response) {
+    async get_user_location_by_username(@Param('username') username: string, @Req() req: any, @Res() res: any) {
         try {
             const findUser = await AppDataSource.manager.getRepository(User)
                                                       .createQueryBuilder("U")
@@ -261,7 +273,7 @@ export default class UserController {
     }
 
     @Get('/user/facebook/auth')
-    async facebookAuth(@Req() req: Request, @Res() res: Response) {
+    async facebookAuth(@Req() req: any, @Res() res: any) {
         try {
             const token = String(req.query.token || '').trim();
             const returnUrl = String(req.query.returnUrl || '').trim();
@@ -288,7 +300,7 @@ export default class UserController {
     }
 
     @Get('/user/facebook/callback')
-    async facebookCallback(@Req() req: Request, @Res() res: Response) {
+    async facebookCallback(@Req() req: any, @Res() res: any) {
         try {
             const code = String(req.query.code || '').trim();
             const rawState = String(req.query.state || '').trim();
@@ -370,7 +382,7 @@ export default class UserController {
 
 
     @Get('/user/get/geolocation/:ip')
-    async get_geolocation_by_ip(@Param('ip') ip: string, @Req() req: Request, @Res() res: Response) {
+    async get_geolocation_by_ip(@Param('ip') ip: string, @Req() req: any, @Res() res: any) {
         try {
             if (!ip) {
                 return res.status(400).json({
@@ -472,7 +484,7 @@ export default class UserController {
     }
 
      @Post('/user/login')
-    async login(@Body() body: any,@Req() req: Request, @Res() res: Response) {
+    async login(@Body() body: any,@Req() req: any, @Res() res: any) {
         try {
             let findUser = await AppDataSource.manager.getRepository(User)
                 .createQueryBuilder("U")
@@ -514,7 +526,7 @@ export default class UserController {
     }
 
     @Post('/user/toggle-online')
-    async toggleOnline(@Body() body: any, @Req() req: Request, @Res() res: Response) {
+    async toggleOnline(@Body() body: any, @Req() req: any, @Res() res: any) {
         try {
             let { userId, isOnline } = body;
             // ...existing code...
@@ -524,7 +536,7 @@ export default class UserController {
     }
 
     @Post('/user/register')
-    async register(@Body() body: any,@Req() req: Request, @Res() res: Response) {
+    async register(@Body() body: any,@Req() req: any, @Res() res: any) {
         try {
             let saltRounds: number = 10;
             // Check if username or email already exists
@@ -576,9 +588,10 @@ export default class UserController {
     }
 
     @Get('/user/session/logged/in')
-    async get_logged_in_users(@Body() body: any,@Req() req: Request, @Res() res: Response) {
+    async get_logged_in_users(@Body() body: any,@Req() req: any, @Res() res: any) {
         try {
             // Prevent caching
+            // Only set headers before sending response
             res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
@@ -588,12 +601,14 @@ export default class UserController {
                 .createQueryBuilder("US")
                 .leftJoinAndSelect("US.fk_logged_in_user", "User")
                 .leftJoinAndSelect("User.profileImage", "ProfileImage")
-                .leftJoinAndSelect("User.cover_photo", "CoverPhoto")
+                .select(["User.id", "User.username", "User.email", "User.first_name", "User.last_name", "ProfileImage.id", "ProfileImage.path"])
                 .orderBy('User.birth_date', 'DESC')
+                .skip(0)
+                .take(20)
                 .getMany();
             return res.status(200).json(logged_in_users);
         } catch (error: Error | any) {
-            // Prevent caching on error
+            // Only set headers before sending response
             res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
@@ -605,7 +620,7 @@ export default class UserController {
     }
 
     @Post('/user/send/request')
-    async sendFriendRequest(@Body() data: any, @Req() req: Request, @Res() res: Response) {
+    async sendFriendRequest(@Body() data: any, @Req() req: any, @Res() res: any) {
         try {
             const token = req.headers['x-session-token'] as string;
             let currentUser: User | null = null;
@@ -696,7 +711,7 @@ export default class UserController {
 
 
     @Get('/user/get/request/:username')
-    async getRequesByUser(@Param('username') username: string, @Req() req: Request, @Res() res: Response) {
+    async getRequesByUser(@Param('username') username: string, @Req() req: any, @Res() res: any) {
         try {
             const token = req.headers['x-session-token'] as string;
             let currentUser: User | null = null;
@@ -760,7 +775,7 @@ export default class UserController {
     }
 
     @Get('/user/accept/request/:username')
-    async acceptRequest(@Param('username') username: string, @Req() req: Request, @Res() res: Response) {
+    async acceptRequest(@Param('username') username: string, @Req() req: any, @Res() res: any) {
         try {
             const token = req.headers['x-session-token'] as string;
             let currentUser: User | null = null;
@@ -821,7 +836,7 @@ export default class UserController {
 
 
     @Get('/user/get/favorites/:username')
-    async getFavoriteUsers(@Param('username') username: string, @Req() req: Request, @Res() res: Response) {
+    async getFavoriteUsers(@Param('username') username: string, @Req() req: any, @Res() res: any) {
         try {
 
             let findUser = await AppDataSource.manager.getRepository(User)
@@ -844,6 +859,8 @@ export default class UserController {
                                                            .orWhere({
                                                              fk_user_two_id: findUser
                                                            })
+                                                           .skip(0)
+                                                           .take(20)
                                                            .getMany();
 
 
@@ -858,7 +875,7 @@ export default class UserController {
     }
 
     @Get('/user/check/for/session/:username')
-    async check_user_session(@Param('username') username: string,@Req() req: Request, @Res() res: Response) {
+    async check_user_session(@Param('username') username: string,@Req() req: any, @Res() res: any) {
         try {
 
             let findUser = await AppDataSource.manager.getRepository(User)
@@ -896,7 +913,7 @@ export default class UserController {
     }
 
    @Get('/user/destroy/session/:username')
-   async destroy_loggin_session(@Param('username') username: string,@Req() req: Request, @Res() res: Response) {
+    async destroy_loggin_session(@Param('username') username: string,@Req() req: any, @Res() res: any) {
         try {
 
             let findUser = await AppDataSource.manager.getRepository(User)
@@ -935,7 +952,7 @@ export default class UserController {
    }
 
    @Post('/user/upload/cover/photo')
-   async upload_cover_photo(@Body()data: any,  @UploadedFiles('cover_photo', { options: fileUploadOptions() }) files: Express.Multer.File[], @Req() req: Request, @Res() res: Response) {
+    async upload_cover_photo(@Body()data: any,  @UploadedFiles('cover_photo', { options: fileUploadOptions() }) files: Express.Multer.File[], @Req() req: any, @Res() res: any) {
         try {
 
             let fk_user_id: User = data.fk_user_id as User;
@@ -986,7 +1003,7 @@ export default class UserController {
 
 
     @Put('/user/update/information')
-    async update_user_information(@Body() data: any, @Req() req: Request, @Res() res: Response) {
+    async update_user_information(@Body() data: any, @Req() req: any, @Res() res: any) {
         try {
             let findInformation = await AppDataSource.manager.getRepository(UserInformation)
                                                              .createQueryBuilder("UI")
@@ -1014,7 +1031,7 @@ export default class UserController {
     }
 
     @Put('/user/update')
-    async updateUserBasicInfo(@Body() data: any, @Req() req: Request, @Res() res: Response) {
+    async updateUserBasicInfo(@Body() data: any, @Req() req: any, @Res() res: any) {
         try {
 
            let findUser = await AppDataSource.manager.getRepository(User)
@@ -1050,7 +1067,7 @@ export default class UserController {
     }
 
     @Post('/user/info/save')
-    async saveUserInformation(@Body() data: any, @Req() req: Request, @Res() res: Response) {
+    async saveUserInformation(@Body() data: any, @Req() req: any, @Res() res: any) {
         try {
             // Find existing UserInformation for this user
             let userInfoRepo = AppDataSource.manager.getRepository(UserInformation);
@@ -1130,7 +1147,7 @@ export default class UserController {
     }
 
     @Get('/user/decline/request/:username')
-    async declineRequestByUsername(@Param('username') username: string, @Req() req: Request, @Res() res: Response) {
+    async declineRequestByUsername(@Param('username') username: string, @Req() req: any, @Res() res: any) {
         try {
             const token = req.headers['x-session-token'] as string;
             let currentUser: User | null = null;
@@ -1178,13 +1195,15 @@ export default class UserController {
      * GET /users/without-package
      */
     @Get('/users/without-package')
-    async getUsersWithoutPackage(@Res() res: Response) {
+    async getUsersWithoutPackage(@Res() res: any) {
         try {
             const users = await AppDataSource.manager.getRepository(User)
                 .createQueryBuilder("U")
                 .leftJoinAndSelect("U.profileImage", "ProfileImage")
                 .leftJoinAndSelect("U.cover_photo", "coverPhoto")
                 .where("U.fk_billing_plan_id IS NULL OR U.fk_billing_plan_id = 0")
+                .skip(0)
+                .take(20)
                 .getMany();
             return res.status(200).json(users);
         } catch (error: any) {

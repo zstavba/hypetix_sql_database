@@ -1,0 +1,39 @@
+# .htaccess for api.hypetix.si subdomain
+# Ensure this file is placed in the hypetix_sql folder
+
+# Enable Rewrite Engine
+RewriteEngine On
+
+# Allow CORS for API requests
+Header set Access-Control-Allow-Origin "*"
+Header set Access-Control-Allow-Methods "GET,POST,OPTIONS,PUT,DELETE"
+Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+
+# Redirect all requests to Node.js server (if using proxy)
+# Uncomment and adjust the following lines if you want to proxy requests to Node.js
+# RewriteCond %{REQUEST_URI} !^/uploads/
+# RewriteRule ^(.*)$ http://localhost:YOUR_NODE_PORT/$1 [P,L]
+
+# Serve static files from /uploads directly
+RewriteCond %{REQUEST_URI} ^/uploads/
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^uploads/(.*)$ uploads/$1 [L]
+
+# Handle preflight OPTIONS requests
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=200,L]
+
+# Prevent directory listing
+Options -Indexes
+
+# Security headers
+Header always set Referrer-Policy "no-referrer-when-downgrade"
+Header always set X-Content-Type-Options "nosniff"
+Header always set X-Frame-Options "SAMEORIGIN"
+Header always set X-XSS-Protection "1; mode=block"
+
+# Custom error documents
+ErrorDocument 404 /error/404.html
+ErrorDocument 500 /error/500.html
+
+# End of .htaccess

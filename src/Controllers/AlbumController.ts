@@ -1,16 +1,14 @@
 import { AppDataSource } from './../data-source';
-import type { Request, Response, NextFunction } from 'express';
+import type { Request, NextFunction } from 'express';
 import { JsonController, Post, Body, Req, Res, Get, Delete, UseBefore, UploadedFile, Param, createExpressServer, UploadedFiles, Put } from 'routing-controllers';
 import { User } from '../entity/User';
-import * as bcyrpt from 'bcrypt';
+import * as bcyrpt from 'bcryptjs';
 import { UserSession } from '../entity/UserSession';
 import * as crypto from "crypto";
-import * as multer from 'multer';
-import type { Options } from 'multer';
+import multer, { Options } from 'multer';
 import path = require('path');
 import * as fs from 'fs';
 import { UserImages } from '../entity/UserImages';
-import type { Express } from 'express';
 import { UserFavorites } from '../entity/UserFavorites';
 import { Message } from '../entity/Message';
 import { Comment } from '../entity/Comment';
@@ -27,10 +25,10 @@ const fileUploadOptions = (): Options => ({
     destination: path.join(process.cwd(), 'uploads'),
     filename: (_req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
   }),
-    limits: { fileSize: 1024 * 1024 * 1024, files: 20 },
+    limits: { fileSize: 10 * 1024 * 1024, files: 5 },
   fileFilter: (_req, file, cb) => {
-        if (allowed.includes(file.mimetype)) cb(null, true);
-        else cb(new Error('File type not allowed'), false);
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(null, false); // Use null for error, false for rejection
   },
 });
 
@@ -40,7 +38,7 @@ const upload = multer(fileUploadOptions());
 export default class AlbumController {
 
     @Post('/user/upload/images')
-    async uploadFiles(@UploadedFiles('images', { options: fileUploadOptions() }) files: Express.Multer.File[], @Body() data: any, @Req() req: Request, @Res() res: import('express').Response ) {    
+    async uploadFiles(@UploadedFiles('images', { options: fileUploadOptions() }) files: Express.Multer.File[], @Body() data: any, @Req() req: Request, @Res() res: any ) {    
         try {
             let user_data = JSON.parse(data.fk_user_id);
             let user = user_data as User;
@@ -213,19 +211,23 @@ export default class AlbumController {
                     console.error('[AlbumController] Socket.IO emit error:', e);
                 }
             }
-            return res.status(200).json({
-                message: "Slike so bile uspešno naložene."
-            })
+            if (!res.headersSent) {
+                return res.status(200).json({
+                    message: "Slike so bile uspešno naložene."
+                });
+            }
 
         } catch (error: Error | any) {
-            return res.status(401).json({
-                message: error.message
-            });
+            if (!res.headersSent) {
+                return res.status(401).json({
+                    message: error.message
+                });
+            }
         }
         
     }
     @Get('/user/album/get/:username')
-    async getUploadedImages(@Param('username') username: string, @Body() data: any, @Req() req: Request, @Res() res: import('express').Response ) 
+    async getUploadedImages(@Param('username') username: string, @Body() data: any, @Req() req: Request, @Res() res: any ) 
     {
         try {
 
@@ -243,6 +245,8 @@ export default class AlbumController {
                                                     .createQueryBuilder("UI")
                                                     .leftJoinAndSelect("UI.fk_user_id","Users")
                                                     .where({ fk_user_id: findUser }) // 👈 make sure to use the user.id here
+                                                    .skip(0)
+                                                    .take(20)
                                                     .getMany();
              if(rows.length <= 0)
                 throw new Error(` Napaka za iskanega uporabnika '${username}' ni bilo mogoče najti dobenih slik !!!  `)                                       
@@ -266,13 +270,19 @@ export default class AlbumController {
     }
 
     @Get('/user/album/get')
-    async get_all_images(@Req() req: Request, @Res() res: Response){
+    async get_all_images(@Req() req: any, @Res() res: any){
         try {
+            const page = parseInt((req as any).query.page) > 0 ? parseInt((req as any).query.page) : 1;
+            const limit = 20;
+            const skip = (page - 1) * limit;
             const rows = await AppDataSource.manager.getRepository(UserImages)
-                                                    .createQueryBuilder("UI")
-                                                    .leftJoinAndSelect("UI.fk_user_id","User")
-                                                    .leftJoinAndSelect("User.profileImage","ProfileImage")
-                                                    .getMany();
+                .createQueryBuilder("UI")
+                .leftJoinAndSelect("UI.fk_user_id","User")
+                .leftJoinAndSelect("User.profileImage","ProfileImage")
+                .select(["UI.id", "UI.album_name", "UI.path", "User.id", "User.username", "ProfileImage.id", "ProfileImage.path"])
+                .skip(skip)
+                .take(limit)
+                .getMany();
 
             if(rows.length <= 0)
                 throw new Error(`Napaka: Seznam slike je trenutno prazen !!!`)
@@ -292,17 +302,22 @@ export default class AlbumController {
         }
     }
    @Get('/user/album/get/by/:album_name')
-    async get_images_by_album_name (@Param('album_name') album_name: string, @Req() req: Request,@Res() res: Response){
+    async get_images_by_album_name (@Param('album_name') album_name: string, @Req() req: any,@Res() res: any){
         try {
 
+            const page = parseInt((req as any).query.page) > 0 ? parseInt((req as any).query.page) : 1;
+            const limit = 20;
+            const skip = (page - 1) * limit;
             let findImages = await AppDataSource.manager.getRepository(UserImages)
-                                                        .createQueryBuilder("UI")
-                                                        .leftJoinAndSelect("UI.fk_user_id","User")
-                                                        .leftJoinAndSelect("User.profileImage","ProfileImage")
-                                                        .where({
-                                                            album_name: album_name
-                                                        })
-                                                        .getMany();
+                .createQueryBuilder("UI")
+                .leftJoinAndSelect("UI.fk_user_id","User")
+                .leftJoinAndSelect("User.profileImage","ProfileImage")
+                .where({
+                    album_name: album_name
+                })
+                .skip(skip)
+                .take(limit)
+                .getMany();
 
             return res.status(200).json(findImages);
 
@@ -316,7 +331,7 @@ export default class AlbumController {
 
 
     @Post('/user/album/set/private/public/:album_name')
-    async set_album_private_public (@Param('album_name') album_name: string, @Body() body: any, @Req() req: Request, @Res() res: Response){
+    async set_album_private_public (@Param('album_name') album_name: string, @Body() body: any, @Req() req: Request, @Res() res: any){
         try {
         } catch (error: Error | any) {
             return res.status(401).json({
@@ -326,15 +341,20 @@ export default class AlbumController {
     }   
 
     @Delete('/user/album/delete/:album_name')
-    async delete_user_album (@Param('album_name') album_name: string, @Req() req: Request, @Res() res: Response) {
+    async delete_user_album (@Param('album_name') album_name: string, @Req() req: any, @Res() res: any) {
         try {
 
+           const page = parseInt((req as any).query.page) > 0 ? parseInt((req as any).query.page) : 1;
+           const limit = 20;
+           const skip = (page - 1) * limit;
            let findAlbum =  await AppDataSource.manager.getRepository(UserImages)
-                                                       .createQueryBuilder("UI")
-                                                       .where({
-                                                        album_name: album_name
-                                                       })
-                                                       .getMany();
+                .createQueryBuilder("UI")
+                .where({
+                    album_name: album_name
+                })
+                .skip(skip)
+                .take(limit)
+                .getMany();
 
             if(findAlbum.length <= 0)
                 throw new Error(` Napaka: Iskan album ne obstaja !!! `)
@@ -360,17 +380,22 @@ export default class AlbumController {
     }
 
     @Get('/user/album/private/images/:private')
-    async get_image_by_private_type (@Param('private') album_private: boolean,  @Req() req: Request, @Res() res: Response){
+    async get_image_by_private_type (@Param('private') album_private: boolean,  @Req() req: any, @Res() res: any){
         try{
 
+            const page = parseInt((req as any).query.page) > 0 ? parseInt((req as any).query.page) : 1;
+            const limit = 20;
+            const skip = (page - 1) * limit;
             const rows = await AppDataSource.manager.getRepository(UserImages)
-                                                    .createQueryBuilder("UI")
-                                                    .leftJoinAndSelect("UI.fk_user_id","User")
-                                                    .leftJoinAndSelect("User.profileImage","ProfileImage")
-                                                    .where({
-                                                        album_private: album_private
-                                                    })
-                                                    .getMany();
+                .createQueryBuilder("UI")
+                .leftJoinAndSelect("UI.fk_user_id","User")
+                .leftJoinAndSelect("User.profileImage","ProfileImage")
+                .where({
+                    album_private: album_private
+                })
+                .skip(skip)
+                .take(limit)
+                .getMany();
 
             if(rows.length <= 0)
                 throw new Error(`Napaka: Seznam slike je trenutno prazen !!!`)
@@ -391,16 +416,21 @@ export default class AlbumController {
     }
 
     @Get('/user/album/public/images')
-    async get_only_public_images(@Req() req: Request, @Res() res: Response){
+    async get_only_public_images(@Req() req: any, @Res() res: any){
         try {
+            const page = parseInt((req as any).query.page) > 0 ? parseInt((req as any).query.page) : 1;
+            const limit = 20;
+            const skip = (page - 1) * limit;
             const rows = await AppDataSource.manager.getRepository(UserImages)
-                                                    .createQueryBuilder("UI")
-                                                    .leftJoinAndSelect("UI.fk_user_id","User")
-                                                    .leftJoinAndSelect("User.profileImage","ProfileImage")
-                                                    .where({
-                                                        album_private: false
-                                                    })
-                                                    .getMany();
+                .createQueryBuilder("UI")
+                .leftJoinAndSelect("UI.fk_user_id","User")
+                .leftJoinAndSelect("User.profileImage","ProfileImage")
+                .where({
+                    album_private: false
+                })
+                .skip(skip)
+                .take(limit)
+                .getMany();
 
             if(rows.length <= 0)
                 throw new Error(`Napaka: Seznam slike je trenutno prazen !!!`)
@@ -420,7 +450,7 @@ export default class AlbumController {
         }
     }
     @Get('/user/album/by/username/:username')
-    async get_album_by_username(@Param('username') username: string, @Req() req: Request, @Res() res: Response){
+    async get_album_by_username(@Param('username') username: string, @Req() req: any, @Res() res: any){
         try {
 
             let findUser = await AppDataSource.manager.getRepository(User)
@@ -432,12 +462,17 @@ export default class AlbumController {
             if(!findUser)
                 throw new Error(` Napaka: Za iskanega uporabnika '${username}' ni bilo mogoče najti slik ! `)
 
+            const page = parseInt((req as any).query.page) > 0 ? parseInt((req as any).query.page) : 1;
+            const limit = 20;
+            const skip = (page - 1) * limit;
             const rows = await AppDataSource.manager.getRepository(UserImages)
-                                                    .createQueryBuilder("UI")
-                                                    .leftJoinAndSelect("UI.fk_user_id","User")
-                                                    .leftJoinAndSelect("User.profileImage","ProfileImage")
-                                                    .where({ fk_user_id: findUser }) // 👈 make sure to use the user.id here
-                                                    .getMany();
+                .createQueryBuilder("UI")
+                .leftJoinAndSelect("UI.fk_user_id","User")
+                .leftJoinAndSelect("User.profileImage","ProfileImage")
+                .where({ fk_user_id: findUser })
+                .skip(skip)
+                .take(limit)
+                .getMany();
            
             const grouped = rows.reduce((acc, img) => {
                 let test = img.album_name ?? "Uncategorized";
@@ -459,7 +494,7 @@ export default class AlbumController {
 
 
     @Delete('/user/album/image/delete/:album_name')
-    async delete_image_by_id (@Param('album_name') album_name: string, @Req() req: Request, @Res() res: Response){
+    async delete_image_by_id (@Param('album_name') album_name: string, @Req() req: Request, @Res() res: any){
         try {
      
             let findImage = await AppDataSource.manager.getRepository(UserImages)
@@ -493,7 +528,7 @@ export default class AlbumController {
     }
 
     @Delete('/user/album/image/delete/id/:id')
-    async delete_image_by_image_id (@Param('id') id: number, @Req() req: Request, @Res() res: Response) {
+    async delete_image_by_image_id (@Param('id') id: number, @Req() req: Request, @Res() res: any) {
         try {
             const findImage = await AppDataSource.manager.getRepository(UserImages)
                                                      .createQueryBuilder("UI")
@@ -529,7 +564,7 @@ export default class AlbumController {
     }
 
     @Post('/user/album/image/update/type/id/:id')
-    async update_image_type_by_id(@Param('id') id: number, @Body() body: any, @Req() req: Request, @Res() res: Response) {
+    async update_image_type_by_id(@Param('id') id: number, @Body() body: any, @Req() req: Request, @Res() res: any) {
         try {
             const findImage = await AppDataSource.manager.getRepository(UserImages)
                                                      .createQueryBuilder("UI")
@@ -553,7 +588,7 @@ export default class AlbumController {
     }
 
     @Post('/user/album/image/update/type/:album_name')
-    async update_album_private_public (@Param('album_name') album_name: string, @Body() body: any, @Req() req: Request, @Res() res: Response){
+    async update_album_private_public (@Param('album_name') album_name: string, @Body() body: any, @Req() req: Request, @Res() res: any){
         try{
          
             let findAlbum = await AppDataSource.manager.getRepository(UserImages)
@@ -589,7 +624,7 @@ export default class AlbumController {
     }
 
     @Post('/user/album/upload/video')
-    async upload_video(@UploadedFile('video', { options: fileUploadOptions() }) file: Express.Multer.File, @Body() data: any, @Req() req: Request, @Res() res: Response ) {
+    async upload_video(@UploadedFile('video', { options: fileUploadOptions() }) file: Express.Multer.File, @Body() data: any, @Req() req: Request, @Res() res: any ) {
         try {
              if (!file) {
                  return res.status(400).json({ message: 'Video file is missing.' });
@@ -645,7 +680,7 @@ export default class AlbumController {
     }
 
     @Get('/user/album/videos')
-    async get_only_videos(@Req() req: Request, @Res() res: Response){
+    async get_only_videos(@Req() req: Request, @Res() res: any){
         try {
             const rows = await AppDataSource.manager.getRepository(UserImages)
                                                     .createQueryBuilder("UI")
@@ -674,7 +709,7 @@ export default class AlbumController {
     }
 
     @Get('/user/album/videos/blocked')
-    async get_blocked_videos(@Req() req: Request, @Res() res: Response){
+    async get_blocked_videos(@Req() req: Request, @Res() res: any){
         try {
             const rows = await AppDataSource.manager.getRepository(UserImages)
                                                     .createQueryBuilder("UI")

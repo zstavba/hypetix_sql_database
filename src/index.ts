@@ -26,7 +26,6 @@ import EventsController from "./Controllers/EventsController";
 import { BillingPlanController } from "./Controllers/BillingPlanController";
 import { NotificationController } from "./Controllers/NotificationController";
 import { GeneralServicesController } from "./Controllers/GeneralServicesController";
-import rateLimit from 'express-rate-limit';
 
 const PORT = process.env.PORT;
 
@@ -75,16 +74,6 @@ AppDataSource.initialize()
 
     app.set("trust proxy", true)
 
-    // CORS is handled by routing-controllers (cors: true)
-
-    // Set Referrer-Policy header
-    app.use((req, res, next) => {
-      if (!res.headersSent) {
-        res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
-      }
-      next();
-    });
-
     // Log CPU usage every 10 seconds in development
     if (process.env.NODE_ENV !== 'production') {
       setInterval(() => {
@@ -97,24 +86,18 @@ AppDataSource.initialize()
     // For cPanel: serve static from /uploads if needed
     const uploadsPath = path.join(process.cwd(), 'src', 'uploads');
     app.use('/uploads', (req, res, next) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Range,Content-Type,Accept');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Range,Accept-Ranges,Content-Length');
+      res.setHeader('Accept-Ranges', 'bytes');
       if (req.method === 'OPTIONS') {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Range,Content-Type,Accept');
-        res.setHeader('Access-Control-Expose-Headers', 'Content-Range,Accept-Ranges,Content-Length');
-        res.setHeader('Accept-Ranges', 'bytes');
-        res.status(204).end();
-        return;
+        return res.sendStatus(204);
       }
       next();
     });
     app.use('/uploads', express.static(uploadsPath, {
       setHeaders: (res) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Range,Content-Type,Accept');
-        res.setHeader('Access-Control-Expose-Headers', 'Content-Range,Accept-Ranges,Content-Length');
-        res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Cache-Control', 'no-store');
       }
     }));
@@ -125,18 +108,11 @@ AppDataSource.initialize()
         return !contentType.includes('multipart/form-data');
       }
     }));
-
-    // Apply rate limiting globally (100 requests per 15 minutes per IP)
-    app.use(rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // limit each IP to 100 requests per windowMs
-      standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-      legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-      message: 'Too many requests from this IP, please try again later.'
+    app.use('/uploads', express.static(path.join(process.cwd(), 'src/uploads'), {
+      setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'no-store');
+      }
     }));
-
-    // Set trust proxy to loopback only for rate limiting security
-    app.set('trust proxy', 'loopback');
 
     // Attach Socket.IO to the HTTP server
     const server = http.createServer(app);

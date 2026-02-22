@@ -12,6 +12,7 @@ import { UserImages } from '../entity/UserImages';
 import { UserFavorites } from '../entity/UserFavorites';
 import { Message } from '../entity/Message';
 import { Comment } from '../entity/Comment';
+import type * as Express from 'express';
 
 const allowed = [
   'image/jpeg','image/png','image/webp','image/gif',
@@ -38,7 +39,7 @@ const upload = multer(fileUploadOptions());
 export default class AlbumController {
 
     @Post('/user/upload/images')
-    async uploadFiles(@UploadedFiles('images', { options: fileUploadOptions() }) files: Express.Multer.File[], @Body() data: any, @Req() req: Request, @Res() res: any ) {    
+    async uploadFiles(@UploadedFiles('images', { options: fileUploadOptions() }) files: any[], @Body() data: any, @Req() req: Request, @Res() res: any ) {    
         try {
             let user_data = JSON.parse(data.fk_user_id);
             let user = user_data as User;
@@ -624,7 +625,7 @@ export default class AlbumController {
     }
 
     @Post('/user/album/upload/video')
-    async upload_video(@UploadedFile('video', { options: fileUploadOptions() }) file: Express.Multer.File, @Body() data: any, @Req() req: Request, @Res() res: any ) {
+    async upload_video(@UploadedFile('video', { options: fileUploadOptions() }) file: any, @Body() data: any, @Req() req: Request, @Res() res: any ) {
         try {
              if (!file) {
                  return res.status(400).json({ message: 'Video file is missing.' });

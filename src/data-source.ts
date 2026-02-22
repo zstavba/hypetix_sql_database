@@ -21,13 +21,13 @@ import { Events } from "./entity/Events";
 import { EventParticipant } from "./entity/EventParticipant";
 
 export const AppDataSource = new DataSource({
-    type: "mysql",
+    type: "postgres",
     host: process.env.DB_HOST,
     port: Number(process.env.DB_PORT),
     username: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    synchronize: false,
+    synchronize: true,
     logging: false,
     entities: [
         User,
@@ -54,5 +54,4 @@ export const AppDataSource = new DataSource({
     migrations: [],
     subscribers: [],
     relationLoadStrategy: "query",
-    extra: { charset: 'utf8mb4_unicode_ci' },
 })

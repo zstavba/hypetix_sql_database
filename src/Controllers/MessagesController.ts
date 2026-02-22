@@ -10,6 +10,7 @@ import multer, { Options } from 'multer';
 import path = require('path');
 import * as fs from 'fs';
 import { UserImages } from '../entity/UserImages';
+import type * as Express from 'express';
 
 import { UserFavorites } from '../entity/UserFavorites';
 import { NewsCategory } from '../entity/NewsCategory';
@@ -68,7 +69,7 @@ export default class MessagesController {
 
   @Post('/message/send')
   async sendMessage(
-    @UploadedFiles('files', { options: fileUploadOptions() }) files: Express.Multer.File[],
+    @UploadedFiles('files', { options: fileUploadOptions() }) files: any[],
     @Body() data: any,
     @Res() response: any,
     @Req() req: Request,
@@ -416,7 +417,7 @@ export default class MessagesController {
 
   @Post('/message/send/text/:conversation_id')
   async sendTextMessage(
-    @UploadedFiles('files', { options: fileUploadOptions() }) files: Express.Multer.File[],
+    @UploadedFiles('files', { options: fileUploadOptions() }) files: any[],
     @Param('conversation_id') conversation_id: number,
     @Body() data: any,
     @Res() response: any,

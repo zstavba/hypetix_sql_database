@@ -15,6 +15,7 @@ import { News } from '../entity/News';
 import { Comment } from '../entity/Comment';
 import { Events } from '../entity/Events';
 import { EventParticipant } from '../entity/EventParticipant';
+import type * as Express from 'express';
 
 const allowed = [
   'image/jpeg','image/png','image/webp','image/gif',
@@ -164,7 +165,7 @@ export default class EventsController {
 
     @Post('/events/create')
     async create_event(
-        @UploadedFiles('event_images', { options: fileUploadOptions() }) files: Express.Multer.File[],
+        @UploadedFiles('event_images', { options: fileUploadOptions() }) files: any[],
         @Req() request: Request,
         @Res() response: any,
         @Body() body: any

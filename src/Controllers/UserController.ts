@@ -13,6 +13,7 @@ import multer, { Options } from 'multer';
 import path = require('path');
 import * as fs from 'fs';
 import { UserImages } from '../entity/UserImages';
+import type * as Express from 'express';
 import { UserFavorites } from '../entity/UserFavorites';
 import { UserInformation } from '../entity/UserInformation';
 import { Notification } from '../entity/Notification';
@@ -952,11 +953,11 @@ export default class UserController {
    }
 
    @Post('/user/upload/cover/photo')
-    async upload_cover_photo(@Body()data: any,  @UploadedFiles('cover_photo', { options: fileUploadOptions() }) files: Express.Multer.File[], @Req() req: any, @Res() res: any) {
+    async upload_cover_photo(@Body()data: any,  @UploadedFiles('cover_photo', { options: fileUploadOptions() }) files: any[], @Req() req: any, @Res() res: any) {
         try {
 
             let fk_user_id: User = data.fk_user_id as User;
-            let cover_photo_file: Express.Multer.File = files[0];
+            let cover_photo_file: any = files[0];
 
             let findUser = await AppDataSource.manager.getRepository(User).findOneBy({
                 id: fk_user_id.id

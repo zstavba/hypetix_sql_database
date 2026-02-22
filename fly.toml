@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for hypetix-sql-rough-glade-5182 on 2026-02-19T01:19:32+01:00
+# fly.toml app configuration file generated for hypetix-sql on 2026-02-21T15:37:03+01:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'hypetix-sql-rough-glade-5182'
+app = 'hypetix-sql'
 primary_region = 'fra'
 
 [experimental]

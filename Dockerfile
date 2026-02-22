@@ -7,10 +7,8 @@ WORKDIR /app
 # Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --production \
-    && npm install express@5.2.1 --legacy-peer-deps \
-    && npm install class-transformer --legacy-peer-deps \
+# Install all dependencies from package.json (including devDependencies for build)
+RUN npm install --legacy-peer-deps \
     && npm install -g socket.io --legacy-peer-deps
 
 # Copy the rest of the application (including src, public, build, etc.)

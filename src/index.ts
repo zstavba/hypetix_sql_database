@@ -117,7 +117,7 @@ AppDataSource.initialize()
     // Attach Socket.IO to the HTTP server
     const server = http.createServer(app);
     const io = new SocketIOServer(server, {
-      path: '/socket.io',
+      path: './socket.io',
       cors: {
         origin: '*', // Allow all origins, or specify your frontend URL
         methods: ['GET', 'POST'],
@@ -171,7 +171,7 @@ AppDataSource.initialize()
       });
     });
 
-    server.listen(PORT, Number('0.0.0.0'), () => {
+    server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
   });

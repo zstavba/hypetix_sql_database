@@ -74,15 +74,7 @@ AppDataSource.initialize()
 
     app.set("trust proxy", true)
 
-    // Log CPU usage every 10 seconds in development
-    if (process.env.NODE_ENV !== 'production') {
-      setInterval(() => {
-        const usage = process.cpuUsage();
-        const userCPU = (usage.user / 1000).toFixed(2);
-        const systemCPU = (usage.system / 1000).toFixed(2);
-        console.log(`[CPU USAGE] User: ${userCPU}ms, System: ${systemCPU}ms`);
-      }, 10000);
-    }
+ 
     // For cPanel: serve static from /uploads if needed
     const uploadsPath = path.join(process.cwd(), 'src', 'uploads');
     app.use('/uploads', (req, res, next) => {
@@ -117,7 +109,7 @@ AppDataSource.initialize()
     // Attach Socket.IO to the HTTP server
     const server = http.createServer(app);
     const io = new SocketIOServer(server, {
-      path: './socket.io',
+      path: '/socket.io',
       cors: {
         origin: '*', // Allow all origins, or specify your frontend URL
         methods: ['GET', 'POST'],

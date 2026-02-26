@@ -602,10 +602,6 @@ export default class UserController {
                 .createQueryBuilder("US")
                 .leftJoinAndSelect("US.fk_logged_in_user", "User")
                 .leftJoinAndSelect("User.profileImage", "ProfileImage")
-                .select(["User.id", "User.username", "User.email", "User.first_name", "User.last_name", "ProfileImage.id", "ProfileImage.path"])
-                .orderBy('User.birth_date', 'DESC')
-                .skip(0)
-                .take(20)
                 .getMany();
             return res.status(200).json(logged_in_users);
         } catch (error: Error | any) {
